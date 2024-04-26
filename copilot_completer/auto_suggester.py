@@ -7,7 +7,6 @@ from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from typing_extensions import override
 
 from .completer import fetch_copilot_suggestion
-from .settings import settings
 
 
 if TYPE_CHECKING:

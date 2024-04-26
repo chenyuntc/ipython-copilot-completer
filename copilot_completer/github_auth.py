@@ -3,12 +3,13 @@ from __future__ import annotations
 import webbrowser
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta,timezone
 from time import sleep
 
 import requests
 from requests import HTTPError, Response
 
+UTC = timezone.utc
 
 # In order to get the access token we need to use the device flow
 # Because we want to use GitHub Copilot in an unsuppored environment
@@ -77,7 +78,7 @@ def get_login_session() -> LoginSession:
 
 
 def wait_for_access_token(session: LoginSession) -> AccessToken | None:
-    expiry = datetime.now(tz=UTC) + timedelta(seconds=session.expires_in)
+    expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=session.expires_in)
     has_expired = False
     access_token: AccessToken | None = None
 

@@ -1,24 +1,42 @@
 from __future__ import annotations
+from dataclasses import dataclass
 
 import json
 import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, ParamSpec, cast
+# from IPython.core.completer import CompletionContext
 
 import aiohttp
 from prompt_toolkit.buffer import Buffer
 import requests
+# CompletionContext
 from IPython.core.completer import (
-    CompletionContext,
+    # CompletionContext,
     IPCompleter,
-    SimpleCompletion,
-    SimpleMatcherResult,
+    # SimpleCompletion,
+    # SimpleMatcherResult,
 )
 from IPython.core.getipython import get_ipython
 
 from .settings import settings
+@dataclass
+class SimpleMatcherResult:
+    completions: list[SimpleCompletion]
 
+@dataclass
+class CompletionContext:
+    full_text: str
+    cursor_position: int
+    cursor_line: int
+    token: str
+    limit: int
+
+@dataclass
+class SimpleCompletion:
+    text: str
+    type: str
 
 if TYPE_CHECKING:
     from IPython.core.history import HistoryManager
@@ -45,7 +63,7 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
 
     suggestion = await copilot_completer(completer, context)
 
-    if completions := cast(list[SimpleCompletion], suggestion["completions"]):
+    if completions := cast(list[SimpleCompletion], suggestion.completions):
         return completions[0].text
     else:
         return None
