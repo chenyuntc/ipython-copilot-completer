@@ -20,9 +20,9 @@ setup(
     packages=find_packages(),
     license="MIT",
     install_requires=[
-        "IPython>=8.18.0",
-        "aiohttp>=3.9.1",
-        "pickleshare>=0.7.5",
-        "requests>=2.26.0",
+        # "IPython>=8.18.0",
+        # "aiohttp>=3.9.1",
+        # "pickleshare>=0.7.5",
+        # "requests>=2.26.0",
     ],
 )

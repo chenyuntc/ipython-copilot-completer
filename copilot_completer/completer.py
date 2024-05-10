@@ -49,8 +49,8 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
     completer = ip.Completer
 
     # use past history as context for prompt
-    history_text = buffer.history.get_strings()[-8:]
-    text='\n'.join(history_text)[-512:]
+    history_text = buffer.history.get_strings()[-40:]
+    text='\n'.join(history_text)[-2048:]
     full_text= text+'\n'+buffer.text
 
     context = CompletionContext(
