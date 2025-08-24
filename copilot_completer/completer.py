@@ -53,8 +53,8 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
     except Exception:
         # If there's any error accessing output, continue without it
         pass
-    
-    full_text='#--------history------\n' +text + last_output + '\n\n #------ current-line-----\n'+buffer.text
+    buffer_text=buffer.text[:-2] if buffer.text.endswith('  ') else buffer.text
+    full_text='#--------history------\n' +text + last_output + '\n\n #------ current-line-----\n'+buffer_text
 
     context = CompletionContext(
         full_text=full_text,
