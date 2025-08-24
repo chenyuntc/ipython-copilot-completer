@@ -1,25 +1,17 @@
-from __future__ import annotations
 from dataclasses import dataclass
 
 import json
 import time
 from collections.abc import Callable
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, ParamSpec, cast
+from typing import  Any, ParamSpec
 
 import aiohttp
 from prompt_toolkit.buffer import Buffer
 import requests
-from IPython.core.completer import (
-    IPCompleter,
-)
 from IPython.core.getipython import get_ipython
 
 from .settings import settings
-@dataclass
-class SimpleMatcherResult:
-    completions: list[SimpleCompletion]
-
 @dataclass
 class CompletionContext:
     full_text: str
@@ -33,9 +25,9 @@ class SimpleCompletion:
     text: str
     type: str
 
-if TYPE_CHECKING:
-    from IPython.core.history import HistoryManager
-    from IPython.core.interactiveshell import InteractiveShell
+@dataclass
+class SimpleMatcherResult:
+    completions: list[SimpleCompletion]
 
 
 async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
@@ -45,8 +37,24 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
 
     # use past history as context for prompt
     history_text = buffer.history.get_strings()[-40:]
-    text='\n'.join(history_text)[-2048:]
-    full_text= text+'\n'+buffer.text
+    text='\n\n'.join(history_text)[-2048:]
+    
+    # Get the last cell output from IPython
+    last_output = ""
+    try:
+        # Access the Out dictionary which contains output history
+        out_dict = ip.user_ns.get('Out', {})
+        if out_dict:
+            # Get the latest output (highest numbered key)
+            latest_key = max(out_dict.keys()) if out_dict.keys() else None
+            if latest_key is not None:
+                output_value = out_dict[latest_key]
+                last_output = f'\n\n#------ last-output ------\nOut[{latest_key}]: {repr(output_value)}'
+    except Exception:
+        # If there's any error accessing output, continue without it
+        pass
+    
+    full_text='#--------history------\n' +text + last_output + '\n\n #------ current-line-----\n'+buffer.text
 
     context = CompletionContext(
         full_text=full_text,
@@ -56,7 +64,7 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
         limit=1,
     )
 
-    suggestion = await copilot_completer(completer, context)
+    suggestion = await copilot_completer(context)
 
     if completions := suggestion.completions:
         return completions[0].text
@@ -65,7 +73,7 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
 
 
 async def copilot_completer(
-    completer: IPCompleter,
+    # completer: IPCompleter,
     context: CompletionContext,
 ) -> SimpleMatcherResult:
     """
@@ -75,37 +83,13 @@ async def copilot_completer(
     """
 
     # Check if any provider is available
-    if not (settings.token or settings.codestral_api_key):
-        return SimpleMatcherResult(completions=[])
-
-    # Get the current session as a list of lines joined by newlines
-    if TYPE_CHECKING:
-        assert isinstance(completer.shell, InteractiveShell)
-        hm = cast(HistoryManager, completer.shell.history_manager)
-    else:
-        hm = completer.shell.history_manager
-
-    session_number = cast(int, hm.session_number)
-
-    session = "\n\n".join(
-        [
-            i[-1]
-            for i in cast(list[str], hm.get_range(session_number))
-            if not i[-1].startswith(("%", "!"))
-        ],
-    )
-
-    # Get the current line
     line = context.full_text
-    is_comment = line.startswith("#")
-    if is_comment:
-        line += "\n"
+    # is_comment = line.startswith("#")
+    # if is_comment:
+    #     line += "\n"
 
     # Create the prompt for Copilot
-    prompt = f"""----history-----
-{session}
----Current Line---
-{line}"""
+    prompt = f"""{line}"""
 
     # Get the suggestion from the configured provider
     # If the current line starts with # then we allow the suggestion to be a comment
@@ -124,7 +108,8 @@ async def copilot_completer(
 
     # If the line is a comment then we need to add a newline as the suggestion
     # appears after the comment on a new line
-    text = f"{context.token}\n" if is_comment else context.token
+    # text = f"{context.token}\n" if is_comment else context.token
+    text = context.token
 
     # Return the suggestion
     provider_name = settings.provider if settings.provider in ["codestral", "github"] else "copilot"
@@ -198,13 +183,14 @@ async def fetch_codestral_suggestion(prompt: str, suffix: str = "") -> str:
     """
     Get a suggestion from Codestral API asynchronously using aiohttp.
     """
+    # print(prompt, suffix)
     
     payload = json.dumps({
         "model": "codestral-latest",
         "prompt": prompt,
         "suffix": suffix,
         "stop": ["\n\n"],
-        "max_tokens": 200,
+        "max_tokens": 100,
         "temperature": 0
     })
     
