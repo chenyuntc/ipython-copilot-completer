@@ -6,17 +6,12 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, ParamSpec, cast
-# from IPython.core.completer import CompletionContext
 
 import aiohttp
 from prompt_toolkit.buffer import Buffer
 import requests
-# CompletionContext
 from IPython.core.completer import (
-    # CompletionContext,
     IPCompleter,
-    # SimpleCompletion,
-    # SimpleMatcherResult,
 )
 from IPython.core.getipython import get_ipython
 
@@ -63,7 +58,7 @@ async def fetch_copilot_suggestion(buffer:Buffer) -> str | None:
 
     suggestion = await copilot_completer(completer, context)
 
-    if completions := cast(list[SimpleCompletion], suggestion.completions):
+    if completions := suggestion.completions:
         return completions[0].text
     else:
         return None
@@ -79,7 +74,8 @@ async def copilot_completer(
     but ignores lines that start with % or ! as these are not valid Python
     """
 
-    if not settings.token:
+    # Check if any provider is available
+    if not (settings.token or settings.codestral_api_key):
         return SimpleMatcherResult(completions=[])
 
     # Get the current session as a list of lines joined by newlines
@@ -91,7 +87,7 @@ async def copilot_completer(
 
     session_number = cast(int, hm.session_number)
 
-    session = "\n".join(
+    session = "\n\n".join(
         [
             i[-1]
             for i in cast(list[str], hm.get_range(session_number))
@@ -106,23 +102,34 @@ async def copilot_completer(
         line += "\n"
 
     # Create the prompt for Copilot
-    prompt = f"""
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+    prompt = f"""----history-----
 {session}
+---Current Line---
 {line}"""
 
-    # Get the suggestion from Copilot
+    # Get the suggestion from the configured provider
     # If the current line starts with # then we allow the suggestion to be a comment
-    code = await fetch_suggestion(prompt, stops=["\n\n"])# if is_comment else "\n"])
+    if settings.provider == "codestral" and settings.codestral_api_key:
+        code = await fetch_codestral_suggestion(prompt, suffix="")
+    elif settings.provider == "github" and settings.token:
+        code = await fetch_suggestion(prompt, stops=["\n\n"])
+    else:
+        # Fallback: try codestral first, then github
+        if settings.codestral_api_key:
+            code = await fetch_codestral_suggestion(prompt, suffix="")
+        elif settings.token:
+            code = await fetch_suggestion(prompt, stops=["\n\n"])
+        else:
+            code = ""
 
     # If the line is a comment then we need to add a newline as the suggestion
     # appears after the comment on a new line
     text = f"{context.token}\n" if is_comment else context.token
 
     # Return the suggestion
+    provider_name = settings.provider if settings.provider in ["codestral", "github"] else "copilot"
     return SimpleMatcherResult(
-        completions=[SimpleCompletion(text=text + code, type="copilot")]
+        completions=[SimpleCompletion(text=text + code, type=provider_name)]
     )
 
 
@@ -185,6 +192,40 @@ async def fetch_suggestion(prompt: str, stops: list[str], suffix: str = "") -> s
                         lines.append(str(json.loads(line)["choices"][0]["text"]))
 
     return "".join(lines)
+
+
+async def fetch_codestral_suggestion(prompt: str, suffix: str = "") -> str:
+    """
+    Get a suggestion from Codestral API asynchronously using aiohttp.
+    """
+    
+    payload = json.dumps({
+        "model": "codestral-latest",
+        "prompt": prompt,
+        "suffix": suffix,
+        "stop": ["\n\n"],
+        "max_tokens": 200,
+        "temperature": 0
+    })
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {settings.codestral_api_key}",
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://codestral.mistral.ai/v1/fim/completions",
+            data=payload,
+            headers=headers,
+        ) as resp:
+            if resp.status == 200:
+                result = await resp.json()
+                if result.get("choices") and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"]
+    
+    return ""
 
 
 P = ParamSpec("P")
